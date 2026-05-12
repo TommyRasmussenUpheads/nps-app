@@ -2,12 +2,24 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
+const DEFAULT_EMAIL_BODY = `Hei,
+
+Takk for hyggelig møte. Her er link for å gi oss en tilbakemelding på samarbeidet vårt.
+
+Det tar bare 30 sekunder — klikk knappen under for å svare:
+
+{{survey_button}}
+
+Lenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.
+
+Ha en fin dag videre!`
+
 const FIELDS = [
   {
     section: 'Avsender',
     fields: [
       { key: 'from_email', label: 'Avsender-epost', placeholder: 'nps@skydotten.no', type: 'email', help: 'Epostadressen som vises i mottakers innboks. Må være verifisert i SMTP2GO.' },
-      { key: 'from_name',  label: 'Avsendernavn',   placeholder: 'NPS Kundeundersøkelse', type: 'text', help: 'Vises som visningsnavn i mottakers epostklient.' },
+      { key: 'from_name',  label: 'Avsendernavn',   placeholder: 'NPS', type: 'text', help: 'Vises som visningsnavn i mottakers epostklient.' },
     ]
   },
   {
@@ -98,6 +110,27 @@ export default function Settings() {
           </div>
         ))}
 
+        {/* Email body section */}
+        <div style={card}>
+          <h2 style={sectionHead}>E-posttekst</h2>
+          <p style={{ fontSize: '12px', color: '#8b8b88', marginBottom: '12px' }}>
+            Skriv inn teksten som sendes til mottakerne. Bruk <code style={{ background: '#f1f0eb', padding: '1px 5px', borderRadius: '4px' }}>{'{{survey_button}}'}</code> for å plassere knappen i teksten.
+          </p>
+          <textarea
+            value={form.email_body || DEFAULT_EMAIL_BODY}
+            onChange={e => setForm({ ...form, email_body: e.target.value })}
+            rows={12}
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.5' }}
+          />
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, email_body: DEFAULT_EMAIL_BODY })}
+            style={{ marginTop: '8px', background: 'none', border: '1px solid #e2e2de', borderRadius: '6px', padding: '5px 12px', fontSize: '12px', color: '#6b6b68', cursor: 'pointer' }}
+          >
+            ↺ Tilbakestill til standard
+          </button>
+        </div>
+
         {saveMsg && (
           <div style={{
             padding: '10px 14px', borderRadius: '8px', marginBottom: '1rem', fontSize: '14px',
@@ -153,5 +186,5 @@ const backBtn = { background: 'none', border: 'none', color: '#6b6b68', cursor: 
 const card = { background: '#fff', border: '1px solid #e2e2de', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' }
 const sectionHead = { fontSize: '13px', fontWeight: 600, color: '#6b6b68', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }
 const labelStyle = { fontSize: '13px', color: '#3a3a38', display: 'block', marginBottom: '5px', fontWeight: 500 }
-const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', outline: 'none', fontFamily: 'inherit', background: '#fafafa' }
+const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', outline: 'none', fontFamily: 'inherit', background: '#fafafa', boxSizing: 'border-box' }
 const btnPrimary = { padding: '9px 18px', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 500, fontSize: '14px', cursor: 'pointer', fontFamily: 'inherit' }

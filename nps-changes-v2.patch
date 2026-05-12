@@ -1,0 +1,274 @@
+From adcd820bd7b22e8f58c58bc1e68edcaab6e79d14 Mon Sep 17 00:00:00 2001
+From: Tommy Rasmussen <tommy.rasmussen@upheads.no>
+Date: Tue, 12 May 2026 18:38:31 +0000
+Subject: [PATCH] Fix mobile survey layout, new email body setting, sender name
+ NPS
+
+---
+ backend/server.js               | 36 +++++++-------
+ frontend/src/pages/Settings.jsx | 37 ++++++++++++++-
+ frontend/src/pages/Survey.jsx   | 83 ++++++++++++++++-----------------
+ 3 files changed, 95 insertions(+), 61 deletions(-)
+
+diff --git a/backend/server.js b/backend/server.js
+index 217c614..e3d3aec 100644
+--- a/backend/server.js
++++ b/backend/server.js
+@@ -80,8 +80,9 @@ db.exec(`
+     smtp_user:     process.env.SMTP_USER || '',
+     smtp_pass:     process.env.SMTP_PASS || '',
+     from_email:    process.env.FROM_EMAIL || 'nps@skydotten.no',
+-    from_name:     process.env.FROM_NAME  || 'NPS Kundeundersøkelse',
++    from_name:     process.env.FROM_NAME  || 'NPS',
+     app_url:       process.env.APP_URL    || 'http://localhost:3003',
++    email_body:    'Hei,\n\nTakk for hyggelig møte. Her er link for å gi oss en tilbakemelding på samarbeidet vårt.\n\nDet tar bare 30 sekunder — klikk knappen under for å svare:\n\n{{survey_button}}\n\nLenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.\n\nHa en fin dag videre!',
+   };
+   const upsert = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+   for (const [k, v] of Object.entries(defaults)) upsert.run(k, v);
+@@ -152,7 +153,7 @@ app.get('/api/settings', requireAuth, (req, res) => {
+ });
+ 
+ app.put('/api/settings', requireAuth, (req, res) => {
+-  const allowed = ['smtp_host','smtp_port','smtp_secure','smtp_user','from_email','from_name','app_url'];
++  const allowed = ['smtp_host','smtp_port','smtp_secure','smtp_user','from_email','from_name','app_url','email_body'];
+   const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+   for (const key of allowed) {
+     if (req.body[key] !== undefined) upsert.run(key, String(req.body[key]));
+@@ -278,9 +279,24 @@ app.post('/api/campaigns/:id/send', requireAuth, async (req, res) => {
+   const contacts   = db.prepare('SELECT * FROM contacts WHERE campaign_id = ?').all(c.id);
+   const baseUrl    = getSetting('app_url') || 'http://localhost:3003';
+   const fromEmail  = getSetting('from_email') || 'nps@skydotten.no';
+-  const fromName   = c.sender_name || getSetting('from_name') || 'Kundeundersøkelse';
++  const fromName   = getSetting('from_name') || 'NPS';
+   const transporter = getTransporter();
+ 
++  const DEFAULT_BODY = 'Hei,\n\nTakk for hyggelig møte. Her er link for å gi oss en tilbakemelding på samarbeidet vårt.\n\nDet tar bare 30 sekunder — klikk knappen under for å svare:\n\n{{survey_button}}\n\nLenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.\n\nHa en fin dag videre!';
++  const emailBodyTemplate = getSetting('email_body') || DEFAULT_BODY;
++
++  function buildEmailHtml(surveyUrl) {
++    const buttonHtml = `<p style="text-align:center;margin:1.5rem 0"><a href="${surveyUrl}" style="background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:16px;display:inline-block">Gi tilbakemelding</a></p>`;
++    const bodyWithButton = emailBodyTemplate.replace('{{survey_button}}', buttonHtml);
++    // Convert plain text lines to HTML paragraphs (skip lines that are already HTML)
++    const htmlParts = bodyWithButton.split('\n').map(line => {
++      if (line.trim() === '') return '';
++      if (line.trim().startsWith('<')) return line;
++      return `<p style="margin:0 0 0.75rem">${line}</p>`;
++    }).join('');
++    return `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a18;line-height:1.6">${htmlParts}</div>`;
++  }
++
+   const results = [];
+   for (const contact of contacts) {
+     const existing = db.prepare('SELECT id FROM responses WHERE token = ?').get(contact.token);
+@@ -292,19 +308,7 @@ app.post('/api/campaigns/:id/send', requireAuth, async (req, res) => {
+         from: `"${fromName}" <${fromEmail}>`,
+         to: contact.email,
+         subject: `Vi ønsker din tilbakemelding — ${c.name}`,
+-        html: `
+-          <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a18">
+-            <p>Hei,</p>
+-            <p>Vi setter stor pris på deg som kunde, og ønsker å høre hva du synes om oss.</p>
+-            <p>Det tar bare 30 sekunder — klikk knappen under for å svare:</p>
+-            <p style="text-align:center;margin:2rem 0">
+-              <a href="${surveyUrl}" style="background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:16px;display:inline-block">
+-                Gi tilbakemelding
+-              </a>
+-            </p>
+-            <p style="font-size:12px;color:#999">Lenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.</p>
+-            <p>Med vennlig hilsen,<br>${fromName}</p>
+-          </div>`,
++        html: buildEmailHtml(surveyUrl),
+       });
+       results.push({ email: contact.email, status: 'sent' });
+     } catch (err) {
+diff --git a/frontend/src/pages/Settings.jsx b/frontend/src/pages/Settings.jsx
+index 93bb844..716529a 100644
+--- a/frontend/src/pages/Settings.jsx
++++ b/frontend/src/pages/Settings.jsx
+@@ -2,12 +2,24 @@ import { useEffect, useState } from 'react'
+ import { useNavigate } from 'react-router-dom'
+ import { useAuth } from '../context/AuthContext'
+ 
++const DEFAULT_EMAIL_BODY = `Hei,
++
++Takk for hyggelig møte. Her er link for å gi oss en tilbakemelding på samarbeidet vårt.
++
++Det tar bare 30 sekunder — klikk knappen under for å svare:
++
++{{survey_button}}
++
++Lenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.
++
++Ha en fin dag videre!`
++
+ const FIELDS = [
+   {
+     section: 'Avsender',
+     fields: [
+       { key: 'from_email', label: 'Avsender-epost', placeholder: 'nps@skydotten.no', type: 'email', help: 'Epostadressen som vises i mottakers innboks. Må være verifisert i SMTP2GO.' },
+-      { key: 'from_name',  label: 'Avsendernavn',   placeholder: 'NPS Kundeundersøkelse', type: 'text', help: 'Vises som visningsnavn i mottakers epostklient.' },
++      { key: 'from_name',  label: 'Avsendernavn',   placeholder: 'NPS', type: 'text', help: 'Vises som visningsnavn i mottakers epostklient.' },
+     ]
+   },
+   {
+@@ -98,6 +110,27 @@ export default function Settings() {
+           </div>
+         ))}
+ 
++        {/* Email body section */}
++        <div style={card}>
++          <h2 style={sectionHead}>E-posttekst</h2>
++          <p style={{ fontSize: '12px', color: '#8b8b88', marginBottom: '12px' }}>
++            Skriv inn teksten som sendes til mottakerne. Bruk <code style={{ background: '#f1f0eb', padding: '1px 5px', borderRadius: '4px' }}>{'{{survey_button}}'}</code> for å plassere knappen i teksten.
++          </p>
++          <textarea
++            value={form.email_body || DEFAULT_EMAIL_BODY}
++            onChange={e => setForm({ ...form, email_body: e.target.value })}
++            rows={12}
++            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.5' }}
++          />
++          <button
++            type="button"
++            onClick={() => setForm({ ...form, email_body: DEFAULT_EMAIL_BODY })}
++            style={{ marginTop: '8px', background: 'none', border: '1px solid #e2e2de', borderRadius: '6px', padding: '5px 12px', fontSize: '12px', color: '#6b6b68', cursor: 'pointer' }}
++          >
++            ↺ Tilbakestill til standard
++          </button>
++        </div>
++
+         {saveMsg && (
+           <div style={{
+             padding: '10px 14px', borderRadius: '8px', marginBottom: '1rem', fontSize: '14px',
+@@ -153,5 +186,5 @@ const backBtn = { background: 'none', border: 'none', color: '#6b6b68', cursor:
+ const card = { background: '#fff', border: '1px solid #e2e2de', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' }
+ const sectionHead = { fontSize: '13px', fontWeight: 600, color: '#6b6b68', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }
+ const labelStyle = { fontSize: '13px', color: '#3a3a38', display: 'block', marginBottom: '5px', fontWeight: 500 }
+-const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', outline: 'none', fontFamily: 'inherit', background: '#fafafa' }
++const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', outline: 'none', fontFamily: 'inherit', background: '#fafafa', boxSizing: 'border-box' }
+ const btnPrimary = { padding: '9px 18px', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 500, fontSize: '14px', cursor: 'pointer', fontFamily: 'inherit' }
+diff --git a/frontend/src/pages/Survey.jsx b/frontend/src/pages/Survey.jsx
+index c890d17..0995779 100644
+--- a/frontend/src/pages/Survey.jsx
++++ b/frontend/src/pages/Survey.jsx
+@@ -3,11 +3,18 @@ import { useParams } from 'react-router-dom'
+ 
+ export default function Survey() {
+   const { token } = useParams()
+-  const [state, setState] = useState('loading') // loading | ready | done | already | error
++  const [state, setState] = useState('loading')
+   const [info, setInfo] = useState(null)
+   const [score, setScore] = useState(null)
+   const [comment, setComment] = useState('')
+   const [submitting, setSubmitting] = useState(false)
++  const [isMobile, setIsMobile] = useState(window.innerWidth < 560)
++
++  useEffect(() => {
++    const onResize = () => setIsMobile(window.innerWidth < 560)
++    window.addEventListener('resize', onResize)
++    return () => window.removeEventListener('resize', onResize)
++  }, [])
+ 
+   useEffect(() => {
+     fetch(`/api/survey/${token}`)
+@@ -32,9 +39,26 @@ export default function Survey() {
+   }
+ 
+   const face = s => s <= 6 ? '😞' : s <= 8 ? '😐' : '😊'
+-  const col = s => s <= 6 ? '#E24B4A' : s <= 8 ? '#BA7517' : '#1D9E75'
++  const col  = s => s <= 6 ? '#E24B4A' : s <= 8 ? '#BA7517' : '#1D9E75'
+   const commentLabel = score === null ? '' : score <= 6 ? 'Hva kan vi gjøre bedre?' : score <= 8 ? 'Hva skulle til for å gi oss en høyere score?' : 'Hva er det du setter mest pris på?'
+ 
++  function ScoreBtn({ i }) {
++    const selected = score === i
++    return (
++      <div onClick={() => setScore(i)} style={{
++        cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
++        gap: '3px', padding: isMobile ? '7px 0' : '8px 4px',
++        borderRadius: '10px', flex: '1',
++        border: `2px solid ${selected ? col(i) : 'transparent'}`,
++        background: selected ? col(i) + '18' : 'transparent',
++        transition: 'all .12s', userSelect: 'none',
++      }}>
++        <span style={{ fontSize: isMobile ? '20px' : '22px' }}>{face(i)}</span>
++        <span style={{ fontSize: isMobile ? '13px' : '14px', fontWeight: 600, color: col(i) }}>{i}</span>
++      </div>
++    )
++  }
++
+   return (
+     <div style={{ minHeight: '100vh', background: '#f5f5f3', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+       <div style={{ background: '#fff', border: '1px solid #e2e2de', borderRadius: '14px', padding: '1.5rem', maxWidth: '560px', width: '100%', boxSizing: 'border-box' }}>
+@@ -72,21 +96,21 @@ export default function Survey() {
+               Hvor sannsynlig er det at du vil anbefale oss til en kollega eller venn?
+             </p>
+ 
+-            {/* Score grid: 2 rows on mobile (0-5 top, 6-10 bottom), single row on desktop */}
+             <div style={{ marginBottom: '8px' }}>
+-              {/* Mobile: two rows of 6 + 5 */}
+-              <div className="score-grid-mobile">
+-                <div style={{ display: 'flex', gap: '3px', marginBottom: '3px', justifyContent: 'center' }}>
+-                  {Array.from({ length: 6 }, (_, i) => scoreBtn(i, score, setScore, face, col, true))}
+-                </div>
+-                <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
+-                  {Array.from({ length: 5 }, (_, i) => scoreBtn(i + 6, score, setScore, face, col, true))}
++              {isMobile ? (
++                <>
++                  <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
++                    {[0,1,2,3,4,5].map(i => <ScoreBtn key={i} i={i} />)}
++                  </div>
++                  <div style={{ display: 'flex', gap: '4px' }}>
++                    {[6,7,8,9,10].map(i => <ScoreBtn key={i} i={i} />)}
++                  </div>
++                </>
++              ) : (
++                <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
++                  {Array.from({ length: 11 }, (_, i) => <ScoreBtn key={i} i={i} />)}
+                 </div>
+-              </div>
+-              {/* Desktop: single row */}
+-              <div className="score-grid-desktop" style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
+-                {Array.from({ length: 11 }, (_, i) => scoreBtn(i, score, setScore, face, col, false))}
+-              </div>
++              )}
+             </div>
+ 
+             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#6b6b68', marginBottom: '1.25rem', padding: '0 2px' }}>
+@@ -117,34 +141,7 @@ export default function Survey() {
+           </>
+         )}
+       </div>
+-      <style>{`
+-        @keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
+-        .score-grid-mobile { display: none; }
+-        .score-grid-desktop { display: flex; }
+-        @media (max-width: 640px) {
+-          .score-grid-mobile { display: block; }
+-          .score-grid-desktop { display: none; }
+-        }
+-      `}</style>
+-    </div>
+-  )
+-}
+-
+-function scoreBtn(i, score, setScore, face, col, compact = false) {
+-  return (
+-    <div key={i} onClick={() => setScore(i)} style={{
+-      cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
+-      gap: compact ? '2px' : '4px',
+-      padding: compact ? '6px 2px' : '8px 4px',
+-      borderRadius: '10px',
+-      minWidth: compact ? '44px' : '42px',
+-      flex: '1',
+-      border: `2px solid ${score === i ? col(i) : 'transparent'}`,
+-      background: score === i ? col(i) + '18' : 'transparent',
+-      transition: 'all .12s',
+-    }}>
+-      <span style={{ fontSize: compact ? '18px' : '20px' }}>{face(i)}</span>
+-      <span style={{ fontSize: compact ? '13px' : '14px', fontWeight: 600, color: col(i) }}>{i}</span>
++      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }`}</style>
+     </div>
+   )
+ }
+-- 
+2.43.0
+

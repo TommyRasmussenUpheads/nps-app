@@ -80,8 +80,9 @@ db.exec(`
     smtp_user:     process.env.SMTP_USER || '',
     smtp_pass:     process.env.SMTP_PASS || '',
     from_email:    process.env.FROM_EMAIL || 'nps@skydotten.no',
-    from_name:     process.env.FROM_NAME  || 'NPS Kundeundersøkelse',
+    from_name:     process.env.FROM_NAME  || 'NPS',
     app_url:       process.env.APP_URL    || 'http://localhost:3003',
+    email_body:    'Hei,\n\nTakk for hyggelig møte. Her er link for å gi oss en tilbakemelding på samarbeidet vårt.\n\nDet tar bare 30 sekunder — klikk knappen under for å svare:\n\n{{survey_button}}\n\nLenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.\n\nHa en fin dag videre!',
   };
   const upsert = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(defaults)) upsert.run(k, v);
@@ -152,7 +153,7 @@ app.get('/api/settings', requireAuth, (req, res) => {
 });
 
 app.put('/api/settings', requireAuth, (req, res) => {
-  const allowed = ['smtp_host','smtp_port','smtp_secure','smtp_user','from_email','from_name','app_url'];
+  const allowed = ['smtp_host','smtp_port','smtp_secure','smtp_user','from_email','from_name','app_url','email_body'];
   const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
   for (const key of allowed) {
     if (req.body[key] !== undefined) upsert.run(key, String(req.body[key]));
@@ -278,8 +279,23 @@ app.post('/api/campaigns/:id/send', requireAuth, async (req, res) => {
   const contacts   = db.prepare('SELECT * FROM contacts WHERE campaign_id = ?').all(c.id);
   const baseUrl    = getSetting('app_url') || 'http://localhost:3003';
   const fromEmail  = getSetting('from_email') || 'nps@skydotten.no';
-  const fromName   = c.sender_name || getSetting('from_name') || 'Kundeundersøkelse';
+  const fromName   = getSetting('from_name') || 'NPS';
   const transporter = getTransporter();
+
+  const DEFAULT_BODY = 'Hei,\n\nTakk for hyggelig møte. Her er link for å gi oss en tilbakemelding på samarbeidet vårt.\n\nDet tar bare 30 sekunder — klikk knappen under for å svare:\n\n{{survey_button}}\n\nLenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.\n\nHa en fin dag videre!';
+  const emailBodyTemplate = getSetting('email_body') || DEFAULT_BODY;
+
+  function buildEmailHtml(surveyUrl) {
+    const buttonHtml = `<p style="text-align:center;margin:1.5rem 0"><a href="${surveyUrl}" style="background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:16px;display:inline-block">Gi tilbakemelding</a></p>`;
+    const bodyWithButton = emailBodyTemplate.replace('{{survey_button}}', buttonHtml);
+    // Convert plain text lines to HTML paragraphs (skip lines that are already HTML)
+    const htmlParts = bodyWithButton.split('\n').map(line => {
+      if (line.trim() === '') return '';
+      if (line.trim().startsWith('<')) return line;
+      return `<p style="margin:0 0 0.75rem">${line}</p>`;
+    }).join('');
+    return `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a18;line-height:1.6">${htmlParts}</div>`;
+  }
 
   const results = [];
   for (const contact of contacts) {
@@ -292,19 +308,7 @@ app.post('/api/campaigns/:id/send', requireAuth, async (req, res) => {
         from: `"${fromName}" <${fromEmail}>`,
         to: contact.email,
         subject: `Vi ønsker din tilbakemelding — ${c.name}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a18">
-            <p>Hei,</p>
-            <p>Vi setter stor pris på deg som kunde, og ønsker å høre hva du synes om oss.</p>
-            <p>Det tar bare 30 sekunder — klikk knappen under for å svare:</p>
-            <p style="text-align:center;margin:2rem 0">
-              <a href="${surveyUrl}" style="background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:16px;display:inline-block">
-                Gi tilbakemelding
-              </a>
-            </p>
-            <p style="font-size:12px;color:#999">Lenken er personlig og kan kun brukes én gang. Svaret ditt lagres anonymt.</p>
-            <p>Med vennlig hilsen,<br>${fromName}</p>
-          </div>`,
+        html: buildEmailHtml(surveyUrl),
       });
       results.push({ email: contact.email, status: 'sent' });
     } catch (err) {

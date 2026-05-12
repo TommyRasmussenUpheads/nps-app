@@ -3,11 +3,18 @@ import { useParams } from 'react-router-dom'
 
 export default function Survey() {
   const { token } = useParams()
-  const [state, setState] = useState('loading') // loading | ready | done | already | error
+  const [state, setState] = useState('loading')
   const [info, setInfo] = useState(null)
   const [score, setScore] = useState(null)
   const [comment, setComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 560)
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 560)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     fetch(`/api/survey/${token}`)
@@ -32,8 +39,25 @@ export default function Survey() {
   }
 
   const face = s => s <= 6 ? '😞' : s <= 8 ? '😐' : '😊'
-  const col = s => s <= 6 ? '#E24B4A' : s <= 8 ? '#BA7517' : '#1D9E75'
+  const col  = s => s <= 6 ? '#E24B4A' : s <= 8 ? '#BA7517' : '#1D9E75'
   const commentLabel = score === null ? '' : score <= 6 ? 'Hva kan vi gjøre bedre?' : score <= 8 ? 'Hva skulle til for å gi oss en høyere score?' : 'Hva er det du setter mest pris på?'
+
+  function ScoreBtn({ i }) {
+    const selected = score === i
+    return (
+      <div onClick={() => setScore(i)} style={{
+        cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
+        gap: '3px', padding: isMobile ? '7px 0' : '8px 4px',
+        borderRadius: '10px', flex: '1',
+        border: `2px solid ${selected ? col(i) : 'transparent'}`,
+        background: selected ? col(i) + '18' : 'transparent',
+        transition: 'all .12s', userSelect: 'none',
+      }}>
+        <span style={{ fontSize: isMobile ? '20px' : '22px' }}>{face(i)}</span>
+        <span style={{ fontSize: isMobile ? '13px' : '14px', fontWeight: 600, color: col(i) }}>{i}</span>
+      </div>
+    )
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f3', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
@@ -72,21 +96,21 @@ export default function Survey() {
               Hvor sannsynlig er det at du vil anbefale oss til en kollega eller venn?
             </p>
 
-            {/* Score grid: 2 rows on mobile (0-5 top, 6-10 bottom), single row on desktop */}
             <div style={{ marginBottom: '8px' }}>
-              {/* Mobile: two rows of 6 + 5 */}
-              <div className="score-grid-mobile">
-                <div style={{ display: 'flex', gap: '3px', marginBottom: '3px', justifyContent: 'center' }}>
-                  {Array.from({ length: 6 }, (_, i) => scoreBtn(i, score, setScore, face, col, true))}
+              {isMobile ? (
+                <>
+                  <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                    {[0,1,2,3,4,5].map(i => <ScoreBtn key={i} i={i} />)}
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[6,7,8,9,10].map(i => <ScoreBtn key={i} i={i} />)}
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
+                  {Array.from({ length: 11 }, (_, i) => <ScoreBtn key={i} i={i} />)}
                 </div>
-                <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
-                  {Array.from({ length: 5 }, (_, i) => scoreBtn(i + 6, score, setScore, face, col, true))}
-                </div>
-              </div>
-              {/* Desktop: single row */}
-              <div className="score-grid-desktop" style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
-                {Array.from({ length: 11 }, (_, i) => scoreBtn(i, score, setScore, face, col, false))}
-              </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#6b6b68', marginBottom: '1.25rem', padding: '0 2px' }}>
@@ -117,34 +141,7 @@ export default function Survey() {
           </>
         )}
       </div>
-      <style>{`
-        @keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
-        .score-grid-mobile { display: none; }
-        .score-grid-desktop { display: flex; }
-        @media (max-width: 640px) {
-          .score-grid-mobile { display: block; }
-          .score-grid-desktop { display: none; }
-        }
-      `}</style>
-    </div>
-  )
-}
-
-function scoreBtn(i, score, setScore, face, col, compact = false) {
-  return (
-    <div key={i} onClick={() => setScore(i)} style={{
-      cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      gap: compact ? '2px' : '4px',
-      padding: compact ? '6px 2px' : '8px 4px',
-      borderRadius: '10px',
-      minWidth: compact ? '44px' : '42px',
-      flex: '1',
-      border: `2px solid ${score === i ? col(i) : 'transparent'}`,
-      background: score === i ? col(i) + '18' : 'transparent',
-      transition: 'all .12s',
-    }}>
-      <span style={{ fontSize: compact ? '18px' : '20px' }}>{face(i)}</span>
-      <span style={{ fontSize: compact ? '13px' : '14px', fontWeight: 600, color: col(i) }}>{i}</span>
+      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }`}</style>
     </div>
   )
 }
