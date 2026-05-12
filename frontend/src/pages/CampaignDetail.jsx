@@ -4,8 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 
 function npsColor(n) {
   if (n === null || n === undefined) return 'var(--muted)'
-  if (n >= 50) return 'var(--green)'
-  if (n >= 0) return 'var(--amber)'
+  if (n >= 8) return 'var(--green)'
+  if (n >= 6) return 'var(--amber)'
   return 'var(--red)'
 }
 
@@ -63,7 +63,7 @@ export default function CampaignDetail() {
   const promoters = responses.filter(r => r.score >= 9).length
   const passives = responses.filter(r => r.score >= 7 && r.score <= 8).length
   const detractors = responses.filter(r => r.score <= 6).length
-  const nps = campaign.nps
+  const nps = campaign.avg_score
 
   const distribution = Array.from({ length: 11 }, (_, i) => ({
     score: i, count: responses.filter(r => r.score === i).length,
@@ -118,7 +118,7 @@ export default function CampaignDetail() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '1rem' }}>
             {[
-              { label: 'NPS-score', value: nps ?? '—', color: npsColor(nps) },
+              { label: 'Snittscore', value: nps !== null ? nps : '—', color: npsColor(nps) },
               { label: 'Promotører', value: promoters, color: 'var(--green)' },
               { label: 'Passive', value: passives, color: 'var(--amber)' },
               { label: 'Kritikere', value: detractors, color: 'var(--red)' },

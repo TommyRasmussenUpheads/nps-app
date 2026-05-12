@@ -211,6 +211,12 @@ function calcNPS(responses) {
   return Math.round(((promoters - detractors) / responses.length) * 100);
 }
 
+function calcAvgScore(responses) {
+  if (!responses.length) return null;
+  const sum = responses.reduce((acc, r) => acc + r.score, 0);
+  return Math.round((sum / responses.length) * 10) / 10; // 1 decimal
+}
+
 // --- Campaign endpoints ---
 app.get('/api/campaigns', requireAuth, (req, res) => {
   const campaigns = db.prepare('SELECT * FROM campaigns ORDER BY created_at DESC').all();
@@ -226,6 +232,7 @@ app.get('/api/campaigns', requireAuth, (req, res) => {
       })),
       response_count: responses.length,
       nps: calcNPS(responses),
+      avg_score: calcAvgScore(responses),
     };
   });
   res.json(result);
@@ -246,6 +253,7 @@ app.get('/api/campaigns/:id', requireAuth, (req, res) => {
     })),
     responses,
     nps: calcNPS(responses),
+    avg_score: calcAvgScore(responses),
   });
 });
 
