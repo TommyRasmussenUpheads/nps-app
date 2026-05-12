@@ -239,6 +239,7 @@ app.get('/api/campaigns/:id', requireAuth, (req, res) => {
     ...c,
     contacts: contacts.map(ct => ({
       ...ct,
+      name: ct.company,
       responded: !!responses.find(r => r.token === ct.token),
       score: responses.find(r => r.token === ct.token)?.score ?? null,
     })),
@@ -254,7 +255,7 @@ app.post('/api/campaigns', requireAuth, (req, res) => {
   const id = uuidv4();
   db.prepare('INSERT INTO campaigns (id, name, description, sender_name) VALUES (?, ?, ?, ?)').run(id, name, description || '', sender_name || getSetting('from_name') || 'Kundeservice');
   const insertContact = db.prepare('INSERT INTO contacts (id, campaign_id, company, email, token) VALUES (?, ?, ?, ?, ?)');
-  for (const c of contacts) insertContact.run(uuidv4(), id, c.company, c.email, genToken());
+  for (const c of contacts) insertContact.run(uuidv4(), id, c.name || c.company, c.email, genToken());
   res.json({ id });
 });
 

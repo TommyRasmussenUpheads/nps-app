@@ -12,10 +12,10 @@ export default function Layout() {
         padding: '0 2rem', display: 'flex', alignItems: 'center', gap: '2rem', height: '56px',
       }}>
         <NavLink to="/" style={{ fontWeight: 600, fontSize: '16px', color: '#1D9E75', textDecoration: 'none', letterSpacing: '-0.3px' }}>
-          📊 NPS Kampanjer
+          📊 NPS
         </NavLink>
         <nav style={{ display: 'flex', gap: '4px', flex: 1 }}>
-          {[['/', 'Oversikt'], ['/campaigns/new', '+ Ny kampanje']].map(([to, label]) => (
+          {[['/', 'Oversikt'], ['/campaigns/new', '+ Ny forespørsel']].map(([to, label]) => (
             <NavLink key={to} to={to} end style={({ isActive }) => ({
               padding: '6px 12px', borderRadius: '6px', textDecoration: 'none', fontSize: '14px',
               background: isActive ? '#E1F5EE' : 'transparent',

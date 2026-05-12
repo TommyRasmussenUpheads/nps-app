@@ -1,0 +1,355 @@
+From 03f7d94cccd1ca8cdb5d02eece87f9419c74156c Mon Sep 17 00:00:00 2001
+From: Tommy Rasmussen <tommy.rasmussen@upheads.no>
+Date: Tue, 12 May 2026 18:21:58 +0000
+Subject: [PATCH] =?UTF-8?q?Rename=20kampanje=E2=86=92foresp=C3=B8rsel,=20f?=
+ =?UTF-8?q?ix=20mobile=20survey=20scaling,=20fix=20contact=20name=20field?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ backend/server.js                     |  3 +-
+ frontend/index.html                   |  2 +-
+ frontend/src/components/Layout.jsx    |  4 +-
+ frontend/src/pages/CampaignDetail.jsx |  4 +-
+ frontend/src/pages/CreateCampaign.jsx | 61 +++++++++++++------------
+ frontend/src/pages/Dashboard.jsx      | 10 ++---
+ frontend/src/pages/Survey.jsx         | 65 +++++++++++++++++++--------
+ 7 files changed, 91 insertions(+), 58 deletions(-)
+
+diff --git a/backend/server.js b/backend/server.js
+index 5d7e301..217c614 100644
+--- a/backend/server.js
++++ b/backend/server.js
+@@ -239,6 +239,7 @@ app.get('/api/campaigns/:id', requireAuth, (req, res) => {
+     ...c,
+     contacts: contacts.map(ct => ({
+       ...ct,
++      name: ct.company,
+       responded: !!responses.find(r => r.token === ct.token),
+       score: responses.find(r => r.token === ct.token)?.score ?? null,
+     })),
+@@ -254,7 +255,7 @@ app.post('/api/campaigns', requireAuth, (req, res) => {
+   const id = uuidv4();
+   db.prepare('INSERT INTO campaigns (id, name, description, sender_name) VALUES (?, ?, ?, ?)').run(id, name, description || '', sender_name || getSetting('from_name') || 'Kundeservice');
+   const insertContact = db.prepare('INSERT INTO contacts (id, campaign_id, company, email, token) VALUES (?, ?, ?, ?, ?)');
+-  for (const c of contacts) insertContact.run(uuidv4(), id, c.company, c.email, genToken());
++  for (const c of contacts) insertContact.run(uuidv4(), id, c.name || c.company, c.email, genToken());
+   res.json({ id });
+ });
+ 
+diff --git a/frontend/index.html b/frontend/index.html
+index 1a4983a..4dd1aeb 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -3,7 +3,7 @@
+ <head>
+   <meta charset="UTF-8" />
+   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+-  <title>NPS Kampanjer</title>
++  <title>NPS Forespørsler</title>
+ </head>
+ <body>
+   <div id="root"></div>
+diff --git a/frontend/src/components/Layout.jsx b/frontend/src/components/Layout.jsx
+index f06f464..409eb8e 100644
+--- a/frontend/src/components/Layout.jsx
++++ b/frontend/src/components/Layout.jsx
+@@ -12,10 +12,10 @@ export default function Layout() {
+         padding: '0 2rem', display: 'flex', alignItems: 'center', gap: '2rem', height: '56px',
+       }}>
+         <NavLink to="/" style={{ fontWeight: 600, fontSize: '16px', color: '#1D9E75', textDecoration: 'none', letterSpacing: '-0.3px' }}>
+-          📊 NPS Kampanjer
++          📊 NPS
+         </NavLink>
+         <nav style={{ display: 'flex', gap: '4px', flex: 1 }}>
+-          {[['/', 'Oversikt'], ['/campaigns/new', '+ Ny kampanje']].map(([to, label]) => (
++          {[['/', 'Oversikt'], ['/campaigns/new', '+ Ny forespørsel']].map(([to, label]) => (
+             <NavLink key={to} to={to} end style={({ isActive }) => ({
+               padding: '6px 12px', borderRadius: '6px', textDecoration: 'none', fontSize: '14px',
+               background: isActive ? '#E1F5EE' : 'transparent',
+diff --git a/frontend/src/pages/CampaignDetail.jsx b/frontend/src/pages/CampaignDetail.jsx
+index 84a3548..87e0bb4 100644
+--- a/frontend/src/pages/CampaignDetail.jsx
++++ b/frontend/src/pages/CampaignDetail.jsx
+@@ -45,7 +45,7 @@ export default function CampaignDetail() {
+   }
+ 
+   async function deleteCampaign() {
+-    if (!confirm('Slett kampanjen og alle svar?')) return
++    if (!confirm('Slett forespørselen og alle svar?')) return
+     await authFetch(`/api/campaigns/${id}`, { method: 'DELETE' })
+     navigate('/')
+   }
+@@ -156,7 +156,7 @@ export default function CampaignDetail() {
+         {campaign.contacts.map(c => (
+           <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+             <div style={{ flex: 1 }}>
+-              <p style={{ fontWeight: 500, fontSize: '14px' }}>{c.company}</p>
++              <p style={{ fontWeight: 500, fontSize: '14px' }}>{c.name}</p>
+               <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{c.email}</p>
+             </div>
+             {c.responded
+diff --git a/frontend/src/pages/CreateCampaign.jsx b/frontend/src/pages/CreateCampaign.jsx
+index 4505690..9cc4294 100644
+--- a/frontend/src/pages/CreateCampaign.jsx
++++ b/frontend/src/pages/CreateCampaign.jsx
+@@ -5,61 +5,62 @@ import { useNavigate } from 'react-router-dom'
+ export default function CreateCampaign() {
+   const [name, setName] = useState('')
+   const [description, setDescription] = useState('')
+-  const [senderName, setSenderName] = useState('')
+   const [contacts, setContacts] = useState([])
+-  const [newCompany, setNewCompany] = useState('')
++  const [newName, setNewName] = useState('')
+   const [newEmail, setNewEmail] = useState('')
+   const [saving, setSaving] = useState(false)
+   const { authFetch } = useAuth()
+   const navigate = useNavigate()
+ 
+   function addContact() {
+-    if (!newCompany.trim() || !newEmail.trim()) return
++    if (!newName.trim() || !newEmail.trim()) return
+     if (!/\S+@\S+\.\S+/.test(newEmail)) { alert('Ugyldig epostadresse'); return }
+-    setContacts([...contacts, { id: Date.now(), company: newCompany.trim(), email: newEmail.trim() }])
+-    setNewCompany(''); setNewEmail('')
++    setContacts([...contacts, { id: Date.now(), name: newName.trim(), email: newEmail.trim() }])
++    setNewName(''); setNewEmail('')
+   }
+ 
+-  async function save() {
+-    if (!name.trim()) { alert('Kampanjenavn er påkrevd'); return }
++  async function save(andSend = false) {
++    if (!name.trim()) { alert('Firma er påkrevd'); return }
+     if (!contacts.length) { alert('Legg til minst én kontakt'); return }
+     setSaving(true)
+     const res = await authFetch('/api/campaigns', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ name, description, sender_name: senderName || 'Kundeservice', contacts }),
++      body: JSON.stringify({ name, description, sender_name: 'Kundeservice', contacts }),
+     })
+     const data = await res.json()
++
++    if (andSend) {
++      await authFetch(`/api/campaigns/${data.id}/send`, { method: 'POST' })
++    }
++
+     setSaving(false)
+     navigate(`/campaigns/${data.id}`)
+   }
+ 
+   return (
+     <div style={{ maxWidth: '640px' }}>
+-      <h1 style={{ fontSize: '22px', fontWeight: 500, marginBottom: '1.5rem' }}>Ny kampanje</h1>
++      <h1 style={{ fontSize: '22px', fontWeight: 500, marginBottom: '1.5rem' }}>Ny forespørsel</h1>
+ 
+       <section style={cardStyle}>
+-        <h2 style={sectionHead}>Kampanjeinfo</h2>
+-        <Field label="Kampanjenavn *">
+-          <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="f.eks. Kundetilfredshet Q3 2026" />
++        <h2 style={sectionHead}>Forespørselinfo</h2>
++        <Field label="Firma *">
++          <input style={inputStyle} value={name} onChange={e => setName(e.target.value)} placeholder="f.eks. Upheads AS" />
+         </Field>
+         <Field label="Beskrivelse">
+           <input style={inputStyle} value={description} onChange={e => setDescription(e.target.value)} placeholder="Valgfri beskrivelse" />
+         </Field>
+-        <Field label="Avsendernavn (vises i epost)">
+-          <input style={inputStyle} value={senderName} onChange={e => setSenderName(e.target.value)} placeholder="f.eks. Kundeservice Upheads" />
+-        </Field>
+       </section>
+ 
+       <section style={cardStyle}>
+         <h2 style={sectionHead}>Legg til kontakter</h2>
+         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end', marginBottom: '12px' }}>
+-          <Field label="Firma">
+-            <input style={inputStyle} value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Firma AS"
++          <Field label="Navn">
++            <input style={inputStyle} value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ola Nordmann"
+               onKeyDown={e => e.key === 'Enter' && addContact()} />
+           </Field>
+           <Field label="Epost">
+-            <input style={inputStyle} value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="kontakt@firma.no"
++            <input style={inputStyle} value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="ola@firma.no"
+               onKeyDown={e => e.key === 'Enter' && addContact()} />
+           </Field>
+           <button onClick={addContact} style={{ ...btnStyle('primary'), height: '36px', alignSelf: 'flex-end' }}>+</button>
+@@ -69,7 +70,7 @@ export default function CreateCampaign() {
+           ? <p style={{ fontSize: '13px', color: 'var(--muted)' }}>Ingen kontakter ennå.</p>
+           : contacts.map(c => (
+             <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', background: 'var(--bg)', borderRadius: 'var(--radius-sm)', marginBottom: '6px' }}>
+-              <span style={{ flex: 1, fontWeight: 500, fontSize: '13px' }}>{c.company}</span>
++              <span style={{ flex: 1, fontWeight: 500, fontSize: '13px' }}>{c.name}</span>
+               <span style={{ flex: 1, color: 'var(--muted)', fontSize: '13px' }}>{c.email}</span>
+               <button onClick={() => setContacts(contacts.filter(x => x.id !== c.id))}
+                 style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}>×</button>
+@@ -78,8 +79,13 @@ export default function CreateCampaign() {
+         }
+       </section>
+ 
+-      <div style={{ display: 'flex', gap: '8px' }}>
+-        <button onClick={save} disabled={saving} style={btnStyle('primary')}>{saving ? 'Lagrer...' : 'Lagre kampanje'}</button>
++      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
++        <button onClick={() => save(false)} disabled={saving} style={btnStyle('primary')}>
++          {saving ? 'Lagrer...' : 'Lagre'}
++        </button>
++        <button onClick={() => save(true)} disabled={saving} style={btnStyle('send')}>
++          {saving ? 'Lagrer...' : '✉️ Lagre og Send'}
++        </button>
+         <button onClick={() => navigate('/')} style={btnStyle()}>Avbryt</button>
+       </div>
+     </div>
+@@ -92,14 +98,11 @@ function Field({ label, children }) {
+ 
+ const cardStyle = { background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.25rem', marginBottom: '1rem' }
+ const sectionHead = { fontSize: '14px', fontWeight: 500, marginBottom: '1rem', color: 'var(--muted)' }
+-const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '14px', outline: 'none' }
++const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }
+ 
+ function btnStyle(type) {
+-  return {
+-    padding: '9px 18px', borderRadius: 'var(--radius-sm)',
+-    border: type === 'primary' ? 'none' : '1px solid var(--border)',
+-    background: type === 'primary' ? 'var(--green)' : '#fff',
+-    color: type === 'primary' ? '#fff' : 'var(--text)',
+-    fontWeight: 500, fontSize: '14px', cursor: 'pointer',
+-  }
++  const base = { padding: '9px 18px', borderRadius: 'var(--radius-sm)', fontWeight: 500, fontSize: '14px', cursor: 'pointer' }
++  if (type === 'primary') return { ...base, border: 'none', background: 'var(--green)', color: '#fff' }
++  if (type === 'send') return { ...base, border: 'none', background: '#2563eb', color: '#fff' }
++  return { ...base, border: '1px solid var(--border)', background: '#fff', color: 'var(--text)' }
+ }
+diff --git a/frontend/src/pages/Dashboard.jsx b/frontend/src/pages/Dashboard.jsx
+index ca4a39e..432901c 100644
+--- a/frontend/src/pages/Dashboard.jsx
++++ b/frontend/src/pages/Dashboard.jsx
+@@ -26,17 +26,17 @@ export default function Dashboard() {
+   if (!campaigns.length) return (
+     <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+       <div style={{ fontSize: '48px', marginBottom: '1rem' }}>📊</div>
+-      <p style={{ fontSize: '18px', fontWeight: 500, marginBottom: '0.5rem' }}>Ingen kampanjer ennå</p>
+-      <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>Opprett din første NPS-kampanje for å komme i gang.</p>
+-      <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny kampanje</button>
++      <p style={{ fontSize: '18px', fontWeight: 500, marginBottom: '0.5rem' }}>Ingen forespørsler ennå</p>
++      <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>Opprett din første NPS-forespørsel for å komme i gang.</p>
++      <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny forespørsel</button>
+     </div>
+   )
+ 
+   return (
+     <div>
+       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+-        <h1 style={{ fontSize: '22px', fontWeight: 500 }}>Kampanjer</h1>
+-        <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny kampanje</button>
++        <h1 style={{ fontSize: '22px', fontWeight: 500 }}>Forespørsler</h1>
++        <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny forespørsel</button>
+       </div>
+       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+         {campaigns.map(c => (
+diff --git a/frontend/src/pages/Survey.jsx b/frontend/src/pages/Survey.jsx
+index 765b807..c890d17 100644
+--- a/frontend/src/pages/Survey.jsx
++++ b/frontend/src/pages/Survey.jsx
+@@ -36,8 +36,8 @@ export default function Survey() {
+   const commentLabel = score === null ? '' : score <= 6 ? 'Hva kan vi gjøre bedre?' : score <= 8 ? 'Hva skulle til for å gi oss en høyere score?' : 'Hva er det du setter mest pris på?'
+ 
+   return (
+-    <div style={{ minHeight: '100vh', background: '#f5f5f3', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+-      <div style={{ background: '#fff', border: '1px solid #e2e2de', borderRadius: '14px', padding: '2rem', maxWidth: '560px', width: '100%' }}>
++    <div style={{ minHeight: '100vh', background: '#f5f5f3', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
++      <div style={{ background: '#fff', border: '1px solid #e2e2de', borderRadius: '14px', padding: '1.5rem', maxWidth: '560px', width: '100%', boxSizing: 'border-box' }}>
+ 
+         {state === 'loading' && <p style={{ color: '#6b6b68', textAlign: 'center' }}>Laster...</p>}
+ 
+@@ -68,26 +68,28 @@ export default function Survey() {
+         {state === 'ready' && info && (
+           <>
+             <p style={{ fontSize: '13px', color: '#6b6b68', marginBottom: '4px' }}>{info.company} — {info.campaign_name}</p>
+-            <p style={{ fontSize: '17px', fontWeight: 500, marginBottom: '1.75rem', lineHeight: 1.4 }}>
++            <p style={{ fontSize: '17px', fontWeight: 500, marginBottom: '1.25rem', lineHeight: 1.4 }}>
+               Hvor sannsynlig er det at du vil anbefale oss til en kollega eller venn?
+             </p>
+ 
+-            <div style={{ display: 'flex', gap: '2px', justifyContent: 'space-between', flexWrap: 'nowrap', marginBottom: '8px', overflowX: 'auto' }}>
+-              {Array.from({ length: 11 }, (_, i) => (
+-                <div key={i} onClick={() => setScore(i)} style={{
+-                  cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
+-                  gap: '4px', padding: '6px 2px', borderRadius: '10px', minWidth: '40px', flex: '1',
+-                  border: `2px solid ${score === i ? col(i) : 'transparent'}`,
+-                  background: score === i ? col(i) + '18' : 'transparent',
+-                  transition: 'all .12s',
+-                }}>
+-                  <span style={{ fontSize: '22px' }}>{face(i)}</span>
+-                  <span style={{ fontSize: '13px', fontWeight: 600, color: col(i) }}>{i}</span>
++            {/* Score grid: 2 rows on mobile (0-5 top, 6-10 bottom), single row on desktop */}
++            <div style={{ marginBottom: '8px' }}>
++              {/* Mobile: two rows of 6 + 5 */}
++              <div className="score-grid-mobile">
++                <div style={{ display: 'flex', gap: '3px', marginBottom: '3px', justifyContent: 'center' }}>
++                  {Array.from({ length: 6 }, (_, i) => scoreBtn(i, score, setScore, face, col, true))}
++                </div>
++                <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
++                  {Array.from({ length: 5 }, (_, i) => scoreBtn(i + 6, score, setScore, face, col, true))}
+                 </div>
+-              ))}
++              </div>
++              {/* Desktop: single row */}
++              <div className="score-grid-desktop" style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
++                {Array.from({ length: 11 }, (_, i) => scoreBtn(i, score, setScore, face, col, false))}
++              </div>
+             </div>
+ 
+-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#6b6b68', marginBottom: '1.5rem', padding: '0 4px' }}>
++            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#6b6b68', marginBottom: '1.25rem', padding: '0 2px' }}>
+               <span>Kritikere (0–6)</span>
+               <span>Passive (7–8)</span>
+               <span>Promotører (9–10)</span>
+@@ -101,7 +103,7 @@ export default function Survey() {
+                   onChange={e => setComment(e.target.value)}
+                   rows={3}
+                   placeholder="Valgfri kommentar..."
+-                  style={{ width: '100%', padding: '10px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
++                  style={{ width: '100%', padding: '10px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                 />
+                 <button onClick={submit} disabled={submitting} style={{
+                   width: '100%', marginTop: '10px', padding: '12px',
+@@ -115,7 +117,34 @@ export default function Survey() {
+           </>
+         )}
+       </div>
+-      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }`}</style>
++      <style>{`
++        @keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
++        .score-grid-mobile { display: none; }
++        .score-grid-desktop { display: flex; }
++        @media (max-width: 640px) {
++          .score-grid-mobile { display: block; }
++          .score-grid-desktop { display: none; }
++        }
++      `}</style>
++    </div>
++  )
++}
++
++function scoreBtn(i, score, setScore, face, col, compact = false) {
++  return (
++    <div key={i} onClick={() => setScore(i)} style={{
++      cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
++      gap: compact ? '2px' : '4px',
++      padding: compact ? '6px 2px' : '8px 4px',
++      borderRadius: '10px',
++      minWidth: compact ? '44px' : '42px',
++      flex: '1',
++      border: `2px solid ${score === i ? col(i) : 'transparent'}`,
++      background: score === i ? col(i) + '18' : 'transparent',
++      transition: 'all .12s',
++    }}>
++      <span style={{ fontSize: compact ? '18px' : '20px' }}>{face(i)}</span>
++      <span style={{ fontSize: compact ? '13px' : '14px', fontWeight: 600, color: col(i) }}>{i}</span>
+     </div>
+   )
+ }
+-- 
+2.43.0
+

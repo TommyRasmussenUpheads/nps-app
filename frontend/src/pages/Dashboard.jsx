@@ -26,17 +26,17 @@ export default function Dashboard() {
   if (!campaigns.length) return (
     <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
       <div style={{ fontSize: '48px', marginBottom: '1rem' }}>📊</div>
-      <p style={{ fontSize: '18px', fontWeight: 500, marginBottom: '0.5rem' }}>Ingen kampanjer ennå</p>
-      <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>Opprett din første NPS-kampanje for å komme i gang.</p>
-      <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny kampanje</button>
+      <p style={{ fontSize: '18px', fontWeight: 500, marginBottom: '0.5rem' }}>Ingen forespørsler ennå</p>
+      <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>Opprett din første NPS-forespørsel for å komme i gang.</p>
+      <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny forespørsel</button>
     </div>
   )
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 500 }}>Kampanjer</h1>
-        <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny kampanje</button>
+        <h1 style={{ fontSize: '22px', fontWeight: 500 }}>Forespørsler</h1>
+        <button onClick={() => navigate('/campaigns/new')} style={btnStyle('primary')}>+ Ny forespørsel</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {campaigns.map(c => (

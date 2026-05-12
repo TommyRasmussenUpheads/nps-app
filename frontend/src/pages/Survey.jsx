@@ -36,8 +36,8 @@ export default function Survey() {
   const commentLabel = score === null ? '' : score <= 6 ? 'Hva kan vi gjøre bedre?' : score <= 8 ? 'Hva skulle til for å gi oss en høyere score?' : 'Hva er det du setter mest pris på?'
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f3', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-      <div style={{ background: '#fff', border: '1px solid #e2e2de', borderRadius: '14px', padding: '2rem', maxWidth: '560px', width: '100%' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f5f3', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e2de', borderRadius: '14px', padding: '1.5rem', maxWidth: '560px', width: '100%', boxSizing: 'border-box' }}>
 
         {state === 'loading' && <p style={{ color: '#6b6b68', textAlign: 'center' }}>Laster...</p>}
 
@@ -68,26 +68,28 @@ export default function Survey() {
         {state === 'ready' && info && (
           <>
             <p style={{ fontSize: '13px', color: '#6b6b68', marginBottom: '4px' }}>{info.company} — {info.campaign_name}</p>
-            <p style={{ fontSize: '17px', fontWeight: 500, marginBottom: '1.75rem', lineHeight: 1.4 }}>
+            <p style={{ fontSize: '17px', fontWeight: 500, marginBottom: '1.25rem', lineHeight: 1.4 }}>
               Hvor sannsynlig er det at du vil anbefale oss til en kollega eller venn?
             </p>
 
-            <div style={{ display: 'flex', gap: '2px', justifyContent: 'space-between', flexWrap: 'nowrap', marginBottom: '8px', overflowX: 'auto' }}>
-              {Array.from({ length: 11 }, (_, i) => (
-                <div key={i} onClick={() => setScore(i)} style={{
-                  cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  gap: '4px', padding: '6px 2px', borderRadius: '10px', minWidth: '40px', flex: '1',
-                  border: `2px solid ${score === i ? col(i) : 'transparent'}`,
-                  background: score === i ? col(i) + '18' : 'transparent',
-                  transition: 'all .12s',
-                }}>
-                  <span style={{ fontSize: '22px' }}>{face(i)}</span>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: col(i) }}>{i}</span>
+            {/* Score grid: 2 rows on mobile (0-5 top, 6-10 bottom), single row on desktop */}
+            <div style={{ marginBottom: '8px' }}>
+              {/* Mobile: two rows of 6 + 5 */}
+              <div className="score-grid-mobile">
+                <div style={{ display: 'flex', gap: '3px', marginBottom: '3px', justifyContent: 'center' }}>
+                  {Array.from({ length: 6 }, (_, i) => scoreBtn(i, score, setScore, face, col, true))}
                 </div>
-              ))}
+                <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
+                  {Array.from({ length: 5 }, (_, i) => scoreBtn(i + 6, score, setScore, face, col, true))}
+                </div>
+              </div>
+              {/* Desktop: single row */}
+              <div className="score-grid-desktop" style={{ display: 'flex', gap: '4px', justifyContent: 'space-between' }}>
+                {Array.from({ length: 11 }, (_, i) => scoreBtn(i, score, setScore, face, col, false))}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#6b6b68', marginBottom: '1.5rem', padding: '0 4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#6b6b68', marginBottom: '1.25rem', padding: '0 2px' }}>
               <span>Kritikere (0–6)</span>
               <span>Passive (7–8)</span>
               <span>Promotører (9–10)</span>
@@ -101,7 +103,7 @@ export default function Survey() {
                   onChange={e => setComment(e.target.value)}
                   rows={3}
                   placeholder="Valgfri kommentar..."
-                  style={{ width: '100%', padding: '10px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
+                  style={{ width: '100%', padding: '10px', border: '1px solid #e2e2de', borderRadius: '8px', fontSize: '14px', resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
                 />
                 <button onClick={submit} disabled={submitting} style={{
                   width: '100%', marginTop: '10px', padding: '12px',
@@ -115,7 +117,34 @@ export default function Survey() {
           </>
         )}
       </div>
-      <style>{`@keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }`}</style>
+      <style>{`
+        @keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
+        .score-grid-mobile { display: none; }
+        .score-grid-desktop { display: flex; }
+        @media (max-width: 640px) {
+          .score-grid-mobile { display: block; }
+          .score-grid-desktop { display: none; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+function scoreBtn(i, score, setScore, face, col, compact = false) {
+  return (
+    <div key={i} onClick={() => setScore(i)} style={{
+      cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center',
+      gap: compact ? '2px' : '4px',
+      padding: compact ? '6px 2px' : '8px 4px',
+      borderRadius: '10px',
+      minWidth: compact ? '44px' : '42px',
+      flex: '1',
+      border: `2px solid ${score === i ? col(i) : 'transparent'}`,
+      background: score === i ? col(i) + '18' : 'transparent',
+      transition: 'all .12s',
+    }}>
+      <span style={{ fontSize: compact ? '18px' : '20px' }}>{face(i)}</span>
+      <span style={{ fontSize: compact ? '13px' : '14px', fontWeight: 600, color: col(i) }}>{i}</span>
     </div>
   )
 }

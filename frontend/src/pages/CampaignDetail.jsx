@@ -45,7 +45,7 @@ export default function CampaignDetail() {
   }
 
   async function deleteCampaign() {
-    if (!confirm('Slett kampanjen og alle svar?')) return
+    if (!confirm('Slett forespørselen og alle svar?')) return
     await authFetch(`/api/campaigns/${id}`, { method: 'DELETE' })
     navigate('/')
   }
@@ -156,7 +156,7 @@ export default function CampaignDetail() {
         {campaign.contacts.map(c => (
           <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
             <div style={{ flex: 1 }}>
-              <p style={{ fontWeight: 500, fontSize: '14px' }}>{c.company}</p>
+              <p style={{ fontWeight: 500, fontSize: '14px' }}>{c.name}</p>
               <p style={{ fontSize: '12px', color: 'var(--muted)' }}>{c.email}</p>
             </div>
             {c.responded
