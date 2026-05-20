@@ -1,39 +1,27 @@
 services:
-  nps-app:
+  nps-appen:
+    image: ghcr.io/upheads-int/nps-appen/nps-appen:latest
     build: .
-    ports:
-      - "3003:3003"
     volumes:
       - nps-data:/data
     environment:
       PORT: 3003
-
-      # JWT - bytt til en lang tilfeldig streng!
-      JWT_SECRET: bytt-meg-til-noe-hemmelig-og-langt
-
-      # Standardbruker (opprettes kun ved første oppstart)
-      ADMIN_USER: admin
-      ADMIN_PASS: admin123
-
-      # --- Standardverdier for innstillinger ---
-      # Disse brukes KUN ved første oppstart.
-      # Etter det endres innstillinger via ⚙️-knappen i appen.
-
-      # SMTP2GO
-      SMTP_HOST: mail.smtp2go.com
-      SMTP_PORT: 587
-      SMTP_SECURE: "false"
-      SMTP_USER: ditt-smtp2go-brukernavn
-      SMTP_PASS: ditt-smtp2go-passord
-
-      # Avsender
-      FROM_EMAIL: nps@skydotten.no
-      FROM_NAME: NPS Kundeundersøkelse
-
-      # Offentlig URL (brukes i epost-lenker)
-      APP_URL: http://localhost:3003
-
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_PASS: ${ADMIN_PASS}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      FROM_EMAIL: ${FROM_EMAIL}
+      FROM_NAME: ${FROM_NAME}
+      APP_URL: ${APP_URL}
     restart: unless-stopped
 
 volumes:
   nps-data:
+
+networks:
+  default:
+    name: asai-proj-nps-appen
