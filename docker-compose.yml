@@ -2,6 +2,10 @@ services:
   nps-appen:
     image: ghcr.io/upheads-int/nps-appen/nps-appen:latest
     build: .
+    container_name: nps-app
+    networks:
+      - default
+      - npm_net
     volumes:
       - nps-data:/data
     environment:
@@ -25,3 +29,6 @@ volumes:
 networks:
   default:
     name: asai-proj-nps-appen
+  npm_net:
+    external: true
+    name: nginx-proxy-manager_default
